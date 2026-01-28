@@ -153,7 +153,6 @@ export async function registerGuest(req: Request, res: Response) {
 }
 
 /**
- * Full PRD provider onboarding in ONE call.
  * Creates:
  * - users row (role PROVIDER)
  * - provider_profiles row (PENDING) with services/rates/stats

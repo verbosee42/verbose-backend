@@ -54,7 +54,28 @@ router.post("/register-guest", registerGuest);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [email, password, displayName]
+ *             required:
+ *               - email
+ *               - password
+ *               - phoneNumber
+ *               - realName
+ *               - displayName
+ *               - dob
+ *               - gender
+ *               - ethnicity
+ *               - state
+ *               - city
+ *               - height
+ *               - weight
+ *               - build
+ *               - hairColor
+ *               - eyeColor
+ *               - services
+ *               - rates
+ *               - coverImage
+ *               - profileImage
+ *               - galleryImages
+ *               - verificationSelfie
  *             properties:
  *               email:
  *                 type: string
@@ -62,14 +83,94 @@ router.post("/register-guest", registerGuest);
  *               password:
  *                 type: string
  *                 example: StrongPass123!
+ *               phoneNumber:
+ *                 type: string
+ *                 example: "+2348012345678"
+ *               realName:
+ *                 type: string
+ *                 example: Amaka Nwoye
  *               displayName:
  *                 type: string
  *                 example: Amaka XO
+ *               dob:
+ *                 type: string
+ *                 format: date
+ *                 example: "2000-01-12"
+ *               gender:
+ *                 type: string
+ *                 example: Female
+ *               ethnicity:
+ *                 type: string
+ *                 example: Black
+ *               state:
+ *                 type: string
+ *                 example: Lagos
+ *               city:
+ *                 type: string
+ *                 example: Ikeja
+ *               height:
+ *                 type: string
+ *                 example: "5'7"
+ *               weight:
+ *                 type: string
+ *                 example: "65kg"
+ *               bustSize:
+ *                 type: string
+ *                 example: "34C"
+ *               build:
+ *                 type: string
+ *                 example: Curvy
+ *               hairColor:
+ *                 type: string
+ *                 example: Black
+ *               eyeColor:
+ *                 type: string
+ *                 example: Brown
+ *               services:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["GFE", "Massage"]
+ *               rates:
+ *                 type: object
+ *                 required: [shortTime, overnight, weekend]
+ *                 properties:
+ *                   shortTime:
+ *                     type: integer
+ *                     example: 20000
+ *                   overnight:
+ *                     type: integer
+ *                     example: 80000
+ *                   weekend:
+ *                     type: integer
+ *                     example: 150000
+ *               coverImage:
+ *                 type: string
+ *                 example: "https://example.com/cover.jpg"
+ *               profileImage:
+ *                 type: string
+ *                 example: "https://example.com/profile.jpg"
+ *               galleryImages:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example:
+ *                   - "https://example.com/g1.jpg"
+ *                   - "https://example.com/g2.jpg"
+ *                   - "https://example.com/g3.jpg"
+ *               verificationSelfie:
+ *                 type: string
+ *                 example: "https://example.com/verify.jpg"
  *     responses:
  *       201:
- *         description: Created
+ *         description: Provider account created (Pending Verification)
+ *       400:
+ *         description: Invalid payload / under 18 / missing required steps
+ *       409:
+ *         description: Email already in use
  */
 router.post("/register-provider", registerProvider);
+
 
 /**
  * @openapi

@@ -8,6 +8,7 @@ import { pool } from "./config/db";
 import authRoutes from "./routes/auth.routes";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./docs/swagger";
+import adminProvidersRoutes from "./routes/admin.providers.routes";
 
 export const app = express();
 
@@ -17,7 +18,7 @@ app.use(
   cors({
     origin: true,
     credentials: true,
-  })
+  }),
 );
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -40,8 +41,7 @@ app.get("/api/v1", (_req, res) => {
 app.get("/", (_req, res) => res.json({ ok: true, message: "Verbose API" }));
 
 app.use("/api/v1/auth", authRoutes);
-
-
+app.use("/api/v1/admin", adminProvidersRoutes);
 // Root endpoint
 app.get("/", (_req, res) => {
   res.status(200).json({ message: "Verbose backend running" });
@@ -57,11 +57,10 @@ app.get("/db-health", async (_req, res, next) => {
   }
 });
 
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
 // 404 handler - must be after all routes
 app.use(notFoundHandler);
 
 // Global error handler - must be last
 app.use(errorHandler);
-
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
