@@ -9,6 +9,8 @@ import authRoutes from "./routes/auth.routes";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./docs/swagger";
 import adminProvidersRoutes from "./routes/admin.providers.routes";
+import blacklistRoutes from "./routes/blacklist.routes";
+import adminBlacklistRoutes from "./routes/admin.blacklist.routes";
 
 export const app = express();
 
@@ -42,6 +44,8 @@ app.get("/", (_req, res) => res.json({ ok: true, message: "Verbose API" }));
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminProvidersRoutes);
+app.use("/api/v1/blacklist", blacklistRoutes);
+app.use("/api/v1/admin", adminBlacklistRoutes);
 // Root endpoint
 app.get("/", (_req, res) => {
   res.status(200).json({ message: "Verbose backend running" });

@@ -10,6 +10,12 @@ import {
   changePassword,
 } from "../controllers/auth.controllers";
 import { requireAuth } from "../middlewares/auth";
+import {
+  loginLimiter,
+  registerLimiter,
+  forgotPasswordLimiter,
+  resetPasswordLimiter,
+} from "../middlewares/rateLimit";
 
 const router = Router();
 
@@ -40,7 +46,7 @@ const router = Router();
  *       201:
  *         description: Created
  */
-router.post("/register-guest", registerGuest);
+router.post("/register-guest", registerLimiter, registerGuest);
 
 /**
  * @openapi
@@ -169,8 +175,7 @@ router.post("/register-guest", registerGuest);
  *       409:
  *         description: Email already in use
  */
-router.post("/register-provider", registerProvider);
-
+router.post("/register-provider", registerLimiter, registerProvider);
 
 /**
  * @openapi
@@ -196,7 +201,7 @@ router.post("/register-provider", registerProvider);
  *       200:
  *         description: OK
  */
-router.post("/login", login);
+router.post("/login", loginLimiter, login);
 
 /**
  * @openapi
@@ -247,7 +252,7 @@ router.post("/logout", requireAuth, logout);
  *       200:
  *         description: Reset token sent if email exists
  */
-router.post("/forgot-password", forgotPassword);
+router.post("/forgot-password", forgotPasswordLimiter, forgotPassword);
 
 /**
  * @openapi
@@ -273,7 +278,7 @@ router.post("/forgot-password", forgotPassword);
  *       200:
  *         description: Password reset successful
  */
-router.post("/reset-password", resetPassword);
+router.post("/reset-password", resetPasswordLimiter, resetPassword);
 
 /**
  * @openapi
