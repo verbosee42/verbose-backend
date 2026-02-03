@@ -10,12 +10,7 @@ import {
   changePassword,
 } from "../controllers/auth.controllers";
 import { requireAuth } from "../middlewares/auth";
-import {
-  loginLimiter,
-  registerLimiter,
-  forgotPasswordLimiter,
-  resetPasswordLimiter,
-} from "../middlewares/rateLimit";
+import { loginLimiter, registerLimiter } from "../middlewares/rateLimit";
 
 const router = Router();
 
@@ -63,7 +58,8 @@ router.post("/register-guest", registerLimiter, registerGuest);
  *             required:
  *               - email
  *               - password
- *               - phoneNumber
+ *               - whatsappNumber
+ *               - callNumber
  *               - realName
  *               - displayName
  *               - dob
@@ -89,9 +85,17 @@ router.post("/register-guest", registerLimiter, registerGuest);
  *               password:
  *                 type: string
  *                 example: StrongPass123!
- *               phoneNumber:
+ *               whatsappNumber:
  *                 type: string
  *                 example: "+2348012345678"
+ *               callNumber:
+ *                 type: string
+ *                 example: "+2348012345678"
+ *               referralCode:
+ *                 type: string
+ *                 nullable: true
+ *                 description: Optional referral code
+ *                 example: REF12345
  *               realName:
  *                 type: string
  *                 example: Amaka Nwoye
@@ -201,7 +205,7 @@ router.post("/register-provider", registerLimiter, registerProvider);
  *       200:
  *         description: OK
  */
-router.post("/login", loginLimiter, login);
+router.post("/login", login);
 
 /**
  * @openapi
@@ -252,7 +256,7 @@ router.post("/logout", requireAuth, logout);
  *       200:
  *         description: Reset token sent if email exists
  */
-router.post("/forgot-password", forgotPasswordLimiter, forgotPassword);
+router.post("/forgot-password", forgotPassword);
 
 /**
  * @openapi
@@ -278,7 +282,7 @@ router.post("/forgot-password", forgotPasswordLimiter, forgotPassword);
  *       200:
  *         description: Password reset successful
  */
-router.post("/reset-password", resetPasswordLimiter, resetPassword);
+router.post("/reset-password", resetPassword);
 
 /**
  * @openapi

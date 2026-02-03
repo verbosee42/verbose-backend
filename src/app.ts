@@ -11,6 +11,10 @@ import { swaggerSpec } from "./docs/swagger";
 import adminProvidersRoutes from "./routes/admin.providers.routes";
 import blacklistRoutes from "./routes/blacklist.routes";
 import adminBlacklistRoutes from "./routes/admin.blacklist.routes";
+import feedsRoutes from "./routes/feeds.routes";
+import chatsRoutes from "./routes/chats.routes";
+import providersRoutes from "./routes/providers.routes";
+import favouritesRoutes from "./routes/favourites.routes";
 
 export const app = express();
 
@@ -46,6 +50,11 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminProvidersRoutes);
 app.use("/api/v1/blacklist", blacklistRoutes);
 app.use("/api/v1/admin", adminBlacklistRoutes);
+app.use("/api/v1/feeds", feedsRoutes);
+app.use("/api/v1/chats", chatsRoutes);
+app.use("/api/v1/providers", providersRoutes);
+app.use("/api/v1/favorites", favouritesRoutes);
+
 // Root endpoint
 app.get("/", (_req, res) => {
   res.status(200).json({ message: "Verbose backend running" });

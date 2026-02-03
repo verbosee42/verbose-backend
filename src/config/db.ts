@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import "dotenv/config";
 
 export const pool = new Pool({
   host: process.env.DB_HOST,
@@ -6,9 +7,9 @@ export const pool = new Pool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   port: Number(process.env.DB_PORT),
-  // ssl: process.env.NODE_ENV === "production"
-  //   ? { rejectUnauthorized: false }
-  //   : undefined,
+  max: 10,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
 });
 
 export async function checkDbConnection() {

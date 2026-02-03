@@ -21,19 +21,3 @@ export const registerLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: "Too many registration attempts. Try again later." },
 });
-
-export const forgotPasswordLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: "Too many password reset requests. Try again later." },
-});
-
-export const resetPasswordLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: "Too many reset attempts. Try again later." },
-});

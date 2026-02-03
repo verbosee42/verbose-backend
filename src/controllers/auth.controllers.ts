@@ -4,11 +4,8 @@ import crypto from "crypto";
 import { z } from "zod";
 import { signAccessToken } from "../utils/jwt";
 import { pool } from "../config/db";
+import { sendPasswordResetEmail } from "../utils/mailer";
 
-/**
- * Local request typing to avoid global Express augmentation issues.
- * Your requireAuth middleware should set req.auth = { id, role }.
- */
 type AuthUser = {
   id: string;
   role: "GUEST" | "PROVIDER" | "ADMIN";
@@ -19,35 +16,35 @@ type AuthedRequest = Request & {
   auth?: AuthUser;
 };
 
-/** -----------------------
- * Zod Schemas
- * ---------------------- */
-
-// 
+// zod schema
 const registerGuestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   displayName: z.string().min(1).max(80),
 });
 
-// allow https://... OR data:image/...;base64,...
+// media string validation (URL or base64)
 const mediaString = z
   .string()
   .min(5)
   .refine(
-    (v) => v.startsWith("http://") || v.startsWith("https://") || v.startsWith("data:"),
-    "Media must be a URL or a data URI (base64)"
+    (v) =>
+      v.startsWith("http://") ||
+      v.startsWith("https://") ||
+      v.startsWith("data:"),
+    "Media must be a URL or a data URI (base64)",
   );
-
 
 const registerProviderSchema = z.object({
   // Account Basics
   email: z.string().email(),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  phoneNumber: z.string().min(7).max(30),
+  whatsappNumber: z.string().min(7).max(30),
+  callNumber: z.string().min(7).max(30).optional(),
+  referralCode: z.string().min(3).max(20).optional(),
 
   // Personal Details
-  realName: z.string().min(2).max(120), 
+  realName: z.string().min(2).max(120),
   displayName: z.string().min(2).max(80),
   dob: z.string().min(8),
   gender: z.string().min(2).max(40),
@@ -62,9 +59,12 @@ const registerProviderSchema = z.object({
   build: z.string().min(1).max(40),
   hairColor: z.string().min(1).max(40),
   eyeColor: z.string().min(1).max(40),
+  bio: z.string(),
 
   // Services & Rates
-  services: z.array(z.string().min(1).max(60)).min(1, "Select at least 1 service"),
+  services: z
+    .array(z.string().min(1).max(60))
+    .min(1, "Select at least 1 service"),
   rates: z.object({
     shortTime: z.number().int().positive(),
     overnight: z.number().int().positive(),
@@ -72,9 +72,11 @@ const registerProviderSchema = z.object({
   }),
 
   // Gallery Upload
-  coverImage: mediaString, // mandatory
-  profileImage: mediaString, // mandatory
-  galleryImages: z.array(mediaString).min(3, "Gallery must have at least 3 images"),
+  coverImage: mediaString,
+  profileImage: mediaString,
+  galleryImages: z
+    .array(mediaString)
+    .min(3, "Gallery must have at least 3 images"),
 
   // Identity Verification
   verificationSelfie: mediaString, // mandatory
@@ -125,7 +127,9 @@ function calcAge(dobString: string) {
 export async function registerGuest(req: Request, res: Response) {
   const parsed = registerGuestSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid payload", errors: parsed.error.flatten() });
+    return res
+      .status(400)
+      .json({ message: "Invalid payload", errors: parsed.error.flatten() });
   }
 
   const { email, password, displayName } = parsed.data;
@@ -138,7 +142,7 @@ export async function registerGuest(req: Request, res: Response) {
       `INSERT INTO users (email, password_hash, role, display_name)
        VALUES ($1, $2, 'GUEST', $3)
        RETURNING id, email, role, display_name`,
-      [emailNorm, passwordHash, displayName]
+      [emailNorm, passwordHash, displayName],
     );
 
     const user = result.rows[0];
@@ -146,7 +150,8 @@ export async function registerGuest(req: Request, res: Response) {
 
     return res.status(201).json({ user, accessToken });
   } catch (e: any) {
-    if (e?.code === "23505") return res.status(409).json({ message: "Email already in use" });
+    if (e?.code === "23505")
+      return res.status(409).json({ message: "Email already in use" });
     console.error(e);
     return res.status(500).json({ message: "Server error" });
   }
@@ -161,22 +166,29 @@ export async function registerGuest(req: Request, res: Response) {
 export async function registerProvider(req: Request, res: Response) {
   const parsed = registerProviderSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid payload", errors: parsed.error.flatten() });
+    return res
+      .status(400)
+      .json({ message: "Invalid payload", errors: parsed.error.flatten() });
   }
 
   const data = parsed.data;
 
-  // Validate 18+
   const age = calcAge(data.dob);
-  if (age === null) return res.status(400).json({ message: "Invalid DOB format (expected YYYY-MM-DD)" });
-  if (age < 18) return res.status(400).json({ message: "You must be 18+ to register as a provider" });
+  if (age === null)
+    return res
+      .status(400)
+      .json({ message: "Invalid DOB format (expected YYYY-MM-DD)" });
+  if (age < 18)
+    return res
+      .status(400)
+      .json({ message: "You must be 18+ to register as a provider" });
 
   const emailNorm = normalizeEmail(data.email);
   const passwordHash = await bcrypt.hash(data.password, 10);
 
   // Store hidden + personal + physical fields in stats JSONB
   const stats = {
-    realName: data.realName, // hidden
+    realName: data.realName,
     dob: data.dob,
     age,
     gender: data.gender,
@@ -187,20 +199,28 @@ export async function registerProvider(req: Request, res: Response) {
     build: data.build,
     hairColor: data.hairColor,
     eyeColor: data.eyeColor,
-    phoneNumber: data.phoneNumber,
-    verificationSelfie: data.verificationSelfie, // keep reference here too
+    whatsappNumber: data.whatsappNumber,
+    callNumber: data.callNumber,
+    referralCode: data.referralCode ?? null,
+    verificationSelfie: data.verificationSelfie,
+    bio: data.bio,
   };
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // 1) Create user
     const userResult = await client.query(
-      `INSERT INTO users (email, password_hash, role, display_name, phone)
-       VALUES ($1, $2, 'PROVIDER', $3, $4)
-       RETURNING id, email, role, display_name`,
-      [emailNorm, passwordHash, data.displayName, data.phoneNumber]
+      `INSERT INTO users (email, password_hash, role, display_name, call_number, whatsapp_number)
+   VALUES ($1, $2, 'PROVIDER', $3, $4, $5)
+   RETURNING id, email, role, display_name, call_number, whatsapp_number`,
+      [
+        emailNorm,
+        passwordHash,
+        data.displayName,
+        data.callNumber,
+        data.whatsappNumber,
+      ],
     );
 
     const user = userResult.rows[0];
@@ -208,9 +228,9 @@ export async function registerProvider(req: Request, res: Response) {
     // 2) Create provider profile (PENDING)
     const providerResult = await client.query(
       `INSERT INTO provider_profiles
-        (user_id, display_name, state, city, services, rates, stats, verification_status)
+        (user_id, display_name, state, city, services, rates, stats, verification_status, bio)
        VALUES
-        ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, 'PENDING')
+        ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, 'PENDING', $8)
        RETURNING id, verification_status, is_suspended, subscription_expires_at`,
       [
         user.id,
@@ -220,9 +240,9 @@ export async function registerProvider(req: Request, res: Response) {
         data.services,
         JSON.stringify(data.rates),
         JSON.stringify(stats),
-      ]
+        data.bio,
+      ],
     );
-
     const providerProfile = providerResult.rows[0];
 
     // 3) Media inserts
@@ -230,14 +250,14 @@ export async function registerProvider(req: Request, res: Response) {
     await client.query(
       `INSERT INTO provider_media (provider_id, url, type, is_cover, is_avatar)
        VALUES ($1, $2, 'IMAGE', true, false)`,
-      [providerProfile.id, data.coverImage]
+      [providerProfile.id, data.coverImage],
     );
 
     // Profile (avatar)
     await client.query(
       `INSERT INTO provider_media (provider_id, url, type, is_cover, is_avatar)
        VALUES ($1, $2, 'IMAGE', false, true)`,
-      [providerProfile.id, data.profileImage]
+      [providerProfile.id, data.profileImage],
     );
 
     // Gallery (min 3)
@@ -245,7 +265,7 @@ export async function registerProvider(req: Request, res: Response) {
       await client.query(
         `INSERT INTO provider_media (provider_id, url, type, is_cover, is_avatar)
          VALUES ($1, $2, 'IMAGE', false, false)`,
-        [providerProfile.id, url]
+        [providerProfile.id, url],
       );
     }
 
@@ -253,7 +273,7 @@ export async function registerProvider(req: Request, res: Response) {
     await client.query(
       `INSERT INTO provider_media (provider_id, url, type, is_cover, is_avatar)
        VALUES ($1, $2, 'IMAGE', false, false)`,
-      [providerProfile.id, data.verificationSelfie]
+      [providerProfile.id, data.verificationSelfie],
     );
 
     await client.query("COMMIT");
@@ -263,7 +283,8 @@ export async function registerProvider(req: Request, res: Response) {
     return res.status(201).json({ user, providerProfile, accessToken });
   } catch (e: any) {
     await client.query("ROLLBACK");
-    if (e?.code === "23505") return res.status(409).json({ message: "Email already in use" });
+    if (e?.code === "23505")
+      return res.status(409).json({ message: "Email already in use" });
     console.error(e);
     return res.status(500).json({ message: "Server error" });
   } finally {
@@ -273,7 +294,10 @@ export async function registerProvider(req: Request, res: Response) {
 
 export async function login(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: "Invalid payload", errors: parsed.error.flatten() });
+  if (!parsed.success)
+    return res
+      .status(400)
+      .json({ message: "Invalid payload", errors: parsed.error.flatten() });
 
   const { email, password } = parsed.data;
   const emailNorm = normalizeEmail(email);
@@ -283,7 +307,7 @@ export async function login(req: Request, res: Response) {
      FROM users
      WHERE email = $1
      LIMIT 1`,
-    [emailNorm]
+    [emailNorm],
   );
 
   const row = result.rows[0];
@@ -295,37 +319,58 @@ export async function login(req: Request, res: Response) {
   const accessToken = signAccessToken({ sub: row.id, role: row.role });
 
   return res.json({
-    user: { id: row.id, email: row.email, role: row.role, display_name: row.display_name },
+    user: {
+      id: row.id,
+      email: row.email,
+      role: row.role,
+      display_name: row.display_name,
+    },
     accessToken,
   });
 }
 
+//
 export async function me(req: AuthedRequest, res: Response) {
   if (!req.auth) return res.status(401).json({ message: "Unauthorized" });
   const userId = req.auth.id;
 
   const userRes = await pool.query(
-    `SELECT id, email, role, display_name, phone, created_at
+    `SELECT id, email, role, display_name, call_number, whatsapp_number, created_at
      FROM users
      WHERE id = $1`,
-    [userId]
+    [userId],
   );
 
   const user = userRes.rows[0];
   if (!user) return res.status(404).json({ message: "User not found" });
 
   let providerProfile = null;
+  let media = null;
+
   if (user.role === "PROVIDER") {
     const pRes = await pool.query(
-      `SELECT id, display_name, state, city, verification_status, is_suspended, subscription_expires_at, services, rates, stats
+      `SELECT id, display_name, state, city, verification_status, is_suspended, 
+              subscription_expires_at, services, rates, stats
        FROM provider_profiles
        WHERE user_id = $1`,
-      [userId]
+      [userId],
     );
     providerProfile = pRes.rows[0] ?? null;
+
+    // Also fetch media for providers
+    if (providerProfile) {
+      const mediaRes = await pool.query(
+        `SELECT id, url, type, is_cover, is_avatar, created_at
+         FROM provider_media
+         WHERE provider_id = $1
+         ORDER BY created_at DESC`,
+        [providerProfile.id],
+      );
+      media = mediaRes.rows;
+    }
   }
 
-  return res.json({ user, providerProfile });
+  return res.json({ user, providerProfile, media });
 }
 
 export async function logout(_req: Request, res: Response) {
@@ -341,13 +386,21 @@ export async function logout(_req: Request, res: Response) {
  */
 export async function forgotPassword(req: Request, res: Response) {
   const parsed = forgotPasswordSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: "Invalid payload", errors: parsed.error.flatten() });
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ message: "Invalid payload", errors: parsed.error.flatten() });
+  }
 
   const emailNorm = normalizeEmail(parsed.data.email);
 
-  const userRes = await pool.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [emailNorm]);
+  const userRes = await pool.query(
+    `SELECT id, email FROM users WHERE email = $1 LIMIT 1`,
+    [emailNorm],
+  );
   const user = userRes.rows[0];
 
+  // Always return ok (avoid email enumeration)
   if (!user) return res.json({ ok: true });
 
   const rawToken = crypto.randomBytes(32).toString("hex");
@@ -357,15 +410,26 @@ export async function forgotPassword(req: Request, res: Response) {
   await pool.query(
     `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
      VALUES ($1, $2, $3)`,
-    [user.id, tokenHash, expiresAt]
+    [user.id, tokenHash, expiresAt],
   );
 
-  return res.json({ ok: true, token: rawToken }); // MVP testing
+  const frontendUrl = process.env.FRONTEND_URL || "http://127.0.0.1:5500/";
+  const resetLink = `${frontendUrl}/?action=reset-password&token=${rawToken}`;
+
+  await sendPasswordResetEmail({
+    to: user.email,
+    resetLink,
+  });
+
+  return res.json({ ok: true });
 }
 
 export async function resetPassword(req: Request, res: Response) {
   const parsed = resetPasswordSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: "Invalid payload", errors: parsed.error.flatten() });
+  if (!parsed.success)
+    return res
+      .status(400)
+      .json({ message: "Invalid payload", errors: parsed.error.flatten() });
 
   const { token, newPassword } = parsed.data;
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
@@ -381,7 +445,7 @@ export async function resetPassword(req: Request, res: Response) {
        ORDER BY created_at DESC
        LIMIT 1
        FOR UPDATE`,
-      [tokenHash]
+      [tokenHash],
     );
 
     const row = tokRes.rows[0];
@@ -402,12 +466,15 @@ export async function resetPassword(req: Request, res: Response) {
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
 
-    await client.query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [
-      passwordHash,
-      row.user_id,
-    ]);
+    await client.query(
+      `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`,
+      [passwordHash, row.user_id],
+    );
 
-    await client.query(`UPDATE password_reset_tokens SET used_at = now() WHERE id = $1`, [row.id]);
+    await client.query(
+      `UPDATE password_reset_tokens SET used_at = now() WHERE id = $1`,
+      [row.id],
+    );
 
     await client.query("COMMIT");
     return res.json({ ok: true });
@@ -422,23 +489,33 @@ export async function resetPassword(req: Request, res: Response) {
 
 export async function changePassword(req: AuthedRequest, res: Response) {
   const parsed = changePasswordSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: "Invalid payload", errors: parsed.error.flatten() });
+  if (!parsed.success)
+    return res
+      .status(400)
+      .json({ message: "Invalid payload", errors: parsed.error.flatten() });
 
   if (!req.auth) return res.status(401).json({ message: "Unauthorized" });
   const userId = req.auth.id;
 
   const { currentPassword, newPassword } = parsed.data;
 
-  const uRes = await pool.query(`SELECT password_hash FROM users WHERE id = $1 LIMIT 1`, [userId]);
+  const uRes = await pool.query(
+    `SELECT password_hash FROM users WHERE id = $1 LIMIT 1`,
+    [userId],
+  );
   const row = uRes.rows[0];
   if (!row) return res.status(404).json({ message: "User not found" });
 
   const ok = await bcrypt.compare(currentPassword, row.password_hash);
-  if (!ok) return res.status(401).json({ message: "Current password is incorrect" });
+  if (!ok)
+    return res.status(401).json({ message: "Current password is incorrect" });
 
   const newHash = await bcrypt.hash(newPassword, 10);
 
-  await pool.query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [newHash, userId]);
+  await pool.query(
+    `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`,
+    [newHash, userId],
+  );
 
   return res.json({ ok: true });
 }
