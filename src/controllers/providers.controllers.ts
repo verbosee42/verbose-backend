@@ -43,6 +43,87 @@ const updateProfileSchema = z.object({
   removeGalleryUrls: z.array(z.string()).optional(),
 });
 
+function toInt(v: unknown, fallback: number) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+/**
+ * GET /api/v1/providers?status=APPROVED&page=1&limit=50
+ * Public – no auth. Returns only APPROVED providers for the Home page.
+ */
+export async function listApprovedProviders(req: Request, res: Response) {
+  const status = String(req.query.status ?? "APPROVED").toUpperCase();
+  const page = toInt(req.query.page, 1);
+  const limit = Math.min(toInt(req.query.limit, 50), 100);
+  const offset = (page - 1) * limit;
+
+  if (status !== "APPROVED") {
+    return res
+      .status(400)
+      .json({ message: "Only status=APPROVED is allowed for public listing" });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        p.id,
+        p.user_id,
+        p.display_name,
+        p.state,
+        p.city,
+        p.verification_status,
+        p.is_suspended,
+        p.subscription_expires_at,
+        p.created_at,
+        p.services,
+        p.rates,
+        p.stats,
+
+        (SELECT url FROM provider_media m
+          WHERE m.provider_id = p.id AND m.is_cover = true
+          ORDER BY m.created_at DESC
+          LIMIT 1) AS cover_url,
+
+        (SELECT url FROM provider_media m
+          WHERE m.provider_id = p.id AND m.is_avatar = true
+          ORDER BY m.created_at DESC
+          LIMIT 1) AS avatar_url
+
+      FROM provider_profiles p
+      WHERE p.verification_status = 'APPROVED'
+        AND (p.is_suspended = false OR p.is_suspended IS NULL)
+      ORDER BY p.created_at DESC
+      LIMIT $1 OFFSET $2
+      `,
+      [limit, offset],
+    );
+
+    const rows = result.rows.map((r: any) => {
+      const stats =
+        typeof r.stats === "string"
+          ? JSON.parse(r.stats || "{}")
+          : r.stats || {};
+      return {
+        ...r,
+        call_number: stats.callNumber ?? stats.call_number ?? null,
+        whatsapp_number: stats.whatsappNumber ?? stats.whatsapp_number ?? null,
+      };
+    });
+
+    return res.json({
+      page,
+      limit,
+      count: rows.length,
+      providers: rows,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
 /**
  * GET /api/v1/providers/me
  * Get current provider's full profile with media

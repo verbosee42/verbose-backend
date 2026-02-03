@@ -4,9 +4,18 @@ import {
   getMyProfile,
   getMyMedia,
   updateMyProfile,
+  listApprovedProviders,
 } from "../controllers/providers.controllers";
 
 const router = Router();
+
+/**
+ * @openapi
+ * GET /api/v1/providers
+ * Public – no auth. Returns only APPROVED providers for the Home page.
+ * Must be defined before /me so that /providers matches this and /providers/me matches getMyProfile.
+ */
+router.get("/", listApprovedProviders);
 
 /**
  * @openapi
